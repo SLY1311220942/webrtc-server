@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<h3>Local:</h3>
+<label for="localUserId">我的ID</label> <input name="localUserId" id="localUserId" th:value="${userId}"/>
+<br>
+<video id="localVideo" style="height: 480px;width: 320px;" autoplay></video>
+<br>
+<h3>Remote:</h3>
+<label for="remoteUserId">远端用户ID</label><input name="remoteUserId" id="remoteUserId" value=""/>
+<button onclick="startVideo()">视频</button>
+<br>
+<video id="remoteVideo" style="height: 480px;width: 320px;" autoplay></video>
+</body>
+<script th:src="@{/js/adapter.js}"></script>
+<script>
+    //兼容不同浏览器
+    var SessionDescription = (window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription);
+    // 获取媒体兼容性写法
+    var getUserMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia);
+    if (!getUserMedia && navigator.mediaDevices) {
+        getUserMedia = navigator.mediaDevices.getUserMedia;
+    }
+
+
+
+    // stun和turn服务器
+    var iceServer = {
+        "iceServers": []
+    };
+
+    // 初始化socket
+    var socket = socket = new WebSocket("wss://192.168.0.13:8080/webRtc/" + document.getElementById("localUserId").value);
+
+    socket.onopen = function () {
+
+        console.log("WebSocket,建立连接成功");
+    };
+    socket.onclose = function (event) {
+        console.log("WebSocket,已关闭");
+    };
+    socket.onerror = function (event) {
+        console.log("WebSocket,异常");
+    };
+
+    //处理到来的信令
+    socket.onmessage = function (event) {
+        var json = JSON.parse(event.data);
+        console.log('onmessage: ', json);
+        //如果是一个ICE的候选，则将其加入到PeerConnection中，否则设定对方的session描述为传递过来的描述
+        if (json.event === "_ice_candidate") {
+            pc.addIceCandidate(new RTCIceCandidate(json.data.candidate));
+        } else {
+            pc.setRemoteDescription(new RTCSessionDescription(json.data.sdp));
+            // 如果是一个offer，那么需要回复一个answer
+            if (json.event === "_offer") {
+                signallingHandle(json);
+            }
+        }
+    };
+
+
+    // 创建RTCPeerConnection
+    var pc = new RTCPeerConnection(iceServer);
+
+    // 发送ICE候选到其他客户端
+    pc.onicecandidate = function (event) {
+        var localUserId = document.getElementById("localUserId").value
+        var remoteUserId = document.getElementById("remoteUserId").value
+        if (event.candidate !== null) {
+            socket.send(JSON.stringify({
+                "sendUserId": localUserId,
+                "toUserId": remoteUserId,
+                "event": "_ice_candidate",
+                "data": {
+                    "candidate": event.candidate
+                }
+            }));
+        }
+    };
+
+    // 如果检测到媒体流连接到本地，将其绑定到一个video标签上输出
+    pc.onaddstream = function (event) {
+        document.getElementById('remoteVideo').srcObject = event.stream;
+    };
+
+    // 发送信令 _offer _answer 类型 信令
+    var sendSignallingHandle = function (type) {
+        var localUserId = document.getElementById("localUserId").value
+        var remoteUserId = document.getElementById("remoteUserId").value
+        if (type == "_offer") {
+            pc.createOffer(function (desc) {
+                pc.setLocalDescription(desc);
+                socket.send(JSON.stringify({
+                    "sendUserId": localUserId,
+                    "toUserId": remoteUserId,
+                    "event": "_offer",
+                    "data": {
+                        "sdp": desc
+                    }
+                }));
+            }, function (error) {
+                console.log("发送信令失败:" + error);
+            });
+        } else if (type == "_answer") {
+            pc.createAnswer(function (desc) {
+                pc.setLocalDescription(desc);
+                socket.send(JSON.stringify({
+                    "sendUserId": localUserId,
+                    "toUserId": remoteUserId,
+                    "event": "_answer",
+                    "data": {
+                        "sdp": desc
+                    }
+                }));
+            }, function (error) {
+                console.log("响应信令失败:" + error);
+            });
+        }
+    }
+
+    //处理发送过来的信令  temp 在群组的时候代表 回复给指定的人
+    var signallingHandle = function (value) {
+        var json = value;
+        //如果是一个ICE的候选，则将其加入到PeerConnection中，否则设定对方的session描述为传递过来的描述
+        if (json.event === "_ice_candidate") {
+            pc.addIceCandidate(new RTCIceCandidate(json.data.candidate));
+        } else {
+            pc.setRemoteDescription(new SessionDescription(json.data.sdp),
+                function () {
+                    // 如果是一个offer，那么需要回复一个answer
+                    if (json.event === "_offer") {
+                        sendSignallingHandle("_answer");
+                    }
+                }
+            );
+        }
+    }
+
+
+    // 打开摄像头并且发送offer信令
+    var openVideoAudioRemote = function (isVideo, isAudio) {
+        getUserMedia.call(navigator, {
+            video: isVideo,//启动视频
+            audio: isAudio//启动音频
+        }, function (localMediaStream) {
+            //获取流成功的回调函数
+            //向PeerConnection中加入需要发送的流
+            pc.addStream(localMediaStream);
+            //发送offer信令
+            sendSignallingHandle("_offer");
+        }, function (error) {
+            //处理媒体流创建失败错误
+            console.log("创建远程媒体对象失败:" + error);
+        });
+    }
+
+    var openVideoAudioLocal = function () {
+        getUserMedia.call(navigator, {
+            video: true,//启动视频
+            audio: false//启动音频
+        }, function (localMediaStream) {
+            //获取流成功的回调函数
+            document.getElementById('localVideo').srcObject = localMediaStream;
+        }, function (error) {
+            //处理媒体流创建失败错误
+            console.log("创建本地媒体对象失败:" + error);
+        });
+    }
+
+    function startVideo() {
+        openVideoAudioRemote(true, false);
+        openVideoAudioLocal();
+    }
+
+</script>
+</html>
