@@ -22,11 +22,12 @@ import java.io.IOException;
  * @date 2020/7/9
  */
 @Component
-@ServerEndpoint(value = "/webRtc/{userId}")
+@ServerEndpoint(value = "/rtcSocket/{userId}")
 public class RtcSocketController {
     private static final Logger LOGGER = LoggerFactory.getLogger(RtcSocketController.class);
 
     /**
+     * 连接开启时操作
      * @param session
      */
     @OnOpen
@@ -34,6 +35,9 @@ public class RtcSocketController {
         try {
             if(StringUtils.isNotBlank(userId)){
                 SessionStorage.saveSession(userId,session);
+            } else {
+                // 参数不完整直接关闭连接
+                session.close();
             }
         } catch (Exception e){
             LOGGER.error(ExceptionUtils.getStackTrace(e));
@@ -47,6 +51,7 @@ public class RtcSocketController {
     }
 
     /**
+     * 发送信息时操作
      * @param message
      * @param session
      */
@@ -54,17 +59,18 @@ public class RtcSocketController {
     public void onMessage(String message, Session session) {
         Message mes = JSON.parseObject(message, Message.class);
         LOGGER.info(message);
-        // 发送的是信令
+        // 发送信息
         sendMessageTo(message,mes.getToUserId());
 
     }
 
     /**
+     * 出错是处理
      * @param t
      */
     @OnError
     public void onError(Throwable t) {
-        System.out.println(t.getMessage());
+        LOGGER.error(ExceptionUtils.getStackTrace(t));
     }
 
     /**
@@ -72,7 +78,7 @@ public class RtcSocketController {
      */
     @OnClose
     public void onClose(Session session) {
-        System.out.println("close");
+        LOGGER.info("websocket session close");
     }
 
     /**
@@ -81,7 +87,6 @@ public class RtcSocketController {
      * @param toUserId
      */
     private void sendMessageTo(String message,String toUserId){
-        Session session = SessionStorage.getSession(toUserId);
-        session.getAsyncRemote().sendText(message);
+        SessionStorage.getSession(toUserId).getAsyncRemote().sendText(message);
     }
 }

@@ -21,4 +21,8 @@ public class SessionStorage {
     public static Session getSession(String userId) {
         return storage.get(userId);
     }
+
+    public static void remove(String userId) {
+        storage.remove("");
+    }
 }

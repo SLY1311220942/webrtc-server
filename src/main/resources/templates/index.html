@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <title>Title</title>
@@ -8,13 +8,13 @@
 <h3>Local:</h3>
 <label for="localUserId">我的ID</label> <input name="localUserId" id="localUserId" th:value="${userId}"/>
 <br>
-<video id="localVideo" style="height: 480px;width: 320px;" autoplay></video>
+<video id="localVideo" style="height: 240px;width: 320px;" autoplay></video>
 <br>
 <h3>Remote:</h3>
 <label for="remoteUserId">远端用户ID</label><input name="remoteUserId" id="remoteUserId" value=""/>
 <button onclick="startVideo()">视频</button>
 <br>
-<video id="remoteVideo" style="height: 480px;width: 320px;" autoplay></video>
+<video id="remoteVideo" style="height: 240px;width: 320px;" autoplay></video>
 </body>
 <script th:src="@{/js/adapter.js}"></script>
 <script>
@@ -34,7 +34,7 @@
     };
 
     // 初始化socket
-    var socket = socket = new WebSocket("wss://192.168.0.13:8080/webRtc/" + document.getElementById("localUserId").value);
+    var socket = socket = new WebSocket("wss://192.168.0.13:8080/rtcSocket/" + document.getElementById("localUserId").value);
 
     socket.onopen = function () {
 
@@ -173,8 +173,22 @@
     }
 
     function startVideo() {
-        openVideoAudioRemote(true, false);
+        openVideoAudioRemote(true, true);
         openVideoAudioLocal();
+    }
+
+
+    var stopVideoAudioRemote = function () {
+
+    }
+
+    var stopVideoAudioLocal = function () {
+
+    }
+
+    function stopVideo() {
+        stopVideoAudioRemote();
+        stopVideoAudioLocal();
     }
 
 </script>
